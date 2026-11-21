@@ -383,8 +383,14 @@ function askForSession(expired) {
     back.addEventListener("click", () => location.assign(ROOT.href));
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const pasted = input.value.trim().replace(/^\.ROBLOSECURITY=/, "");
-      if (pasted && !pasted.startsWith(SESSION_PREFIX)) return fail("That isn't a .ROBLOSECURITY value.");
+      let pasted = input.value.trim().replace(/^\.ROBLOSECURITY=/, "");
+      if (pasted && !pasted.startsWith(SESSION_PREFIX)) {
+        // Not a cookie: treat it as the password for this server's /vault.
+        const vault = await fetch("/vault", { method: "POST", headers: { "content-type": "text/plain" }, body: pasted, cache: "no-store" }).catch(() => null);
+        const data = vault ? await vault.json().catch(() => ({})) : {};
+        if (!vault?.ok || typeof data.cookie !== "string" || !data.cookie.startsWith(SESSION_PREFIX)) return fail(data.error || "That isn't a .ROBLOSECURITY value or your password.");
+        pasted = data.cookie;
+      }
       const value = pasted || (await proxySession());
       if (!value) return fail("No Roblox sign-in found in this site's proxy browser. Paste your .ROBLOSECURITY instead.");
       submit.disabled = true;
