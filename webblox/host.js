@@ -294,8 +294,11 @@ navigator.serviceWorker.startMessages();
 
 // ---- Session ------------------------------------------------------------------
 
+let lastSessionStatus = null;
 async function sessionAccepted() {
   const result = await upstream({ url: SESSION_CHECK, method: "GET", headers: [], body: null });
+  lastSessionStatus = result.status;
+  console.info("[blox] session check: HTTP " + result.status);
   return result.status === 200;
 }
 
@@ -403,7 +406,7 @@ function askForSession(expired) {
         return fail(`Couldn't reach Roblox: ${err.message || err}`);
       }
       submit.disabled = false;
-      if (!accepted) return fail(pasted ? "Roblox rejected that session." : "The sign-in in this site's proxy browser has expired. Sign in there again.");
+      if (!accepted) return fail(pasted ? "Roblox rejected that session (HTTP " + lastSessionStatus + ")." : "The sign-in in this site's proxy browser has expired. Sign in there again.");
       shade.remove();
       resolve();
     });
