@@ -14,9 +14,19 @@ import { createHash, timingSafeEqual } from "node:crypto";
 // as environment variables on the host, never in this repo. Typing the password
 // into the sign-in box POSTs it to /vault, which answers with the cookie.
 // After 5 wrong passwords the vault locks for 15 minutes.
-const VAULT_COOKIE = (process.env.BLOX_COOKIE ?? "").trim();
-const VAULT_PASSWORD = (process.env.BLOX_PASSWORD ?? "").trim();
-const VAULT_ENABLED = VAULT_COOKIE.length > 0 && VAULT_PASSWORD.length >= 24;
+// Extra accounts: BLOX_COOKIE2 + BLOX_PASSWORD2, BLOX_COOKIE3 + BLOX_PASSWORD3, and
+// so on up to 20. Each slot needs its own password; a slot whose password is
+// shorter than 24 characters is ignored.
+const VAULT_SLOTS: { cookie: string; password: string }[] = [];
+for (let n = 1; n <= 20; n++) {
+  const suffix = n === 1 ? "" : String(n);
+  const cookie = (process.env["BLOX_COOKIE" + suffix] ?? "").trim();
+  const password = (process.env["BLOX_PASSWORD" + suffix] ?? "").trim();
+  if (cookie.length > 0 && password.length >= 24) VAULT_SLOTS.push({ cookie, password });
+  else if (cookie || password) console.warn("[webblox] vault slot " + n + " ignored: it needs a cookie and a 24+ character password");
+}
+const VAULT_ENABLED = VAULT_SLOTS.length > 0;
+console.log("[webblox] vault slots: " + VAULT_SLOTS.length);
 const VAULT_MAX_FAILS = 5;
 const VAULT_LOCK_MS = 15 * 60 * 1000;
 let vaultFails = 0;
@@ -53,9 +63,15 @@ async function handleVault(req: IncomingMessage): Promise<Response> {
     return vaultJson(429, { error: "Too many wrong passwords. Try again in " + minutes + " min." });
   }
   const password = await readBody(req, 1024);
-  if (password !== null && timingSafeEqual(sha256(password.trim()), sha256(VAULT_PASSWORD))) {
+  const given = password === null ? null : sha256(password.trim());
+  let match: string | null = null;
+  // Check every slot, so the time taken doesn't reveal which one matched.
+  for (const slot of VAULT_SLOTS) {
+    if (given !== null && timingSafeEqual(given, sha256(slot.password)) && match === null) match = slot.cookie;
+  }
+  if (match !== null) {
     vaultFails = 0;
-    return vaultJson(200, { cookie: VAULT_COOKIE });
+    return vaultJson(200, { cookie: match });
   }
   vaultFails += 1;
   if (vaultFails >= VAULT_MAX_FAILS) {
