@@ -560,6 +560,15 @@ async function boot() {
   if (!window.crossOriginIsolated) {
     throw new Error("This page is not cross-origin isolated, so the engine cannot use shared memory.");
   }
+  // /blox/?signout forgets the saved Roblox session, so another account
+  // (or another vault password) can sign in on this browser.
+  if (new URLSearchParams(location.search).has("signout")) {
+    forgetSession();
+    localStorage.removeItem(MANUAL_KEY);
+    const clean = new URL(location.href);
+    clean.searchParams.delete("signout");
+    history.replaceState(history.state, "", clean);
+  }
   say("Connecting…");
   await controlled();
   await transport;
